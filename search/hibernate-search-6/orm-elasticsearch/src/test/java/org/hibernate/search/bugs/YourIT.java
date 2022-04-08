@@ -6,6 +6,8 @@ import java.util.List;
 
 import org.hibernate.Session;
 import org.hibernate.Transaction;
+import org.hibernate.search.engine.search.common.BooleanOperator;
+import org.hibernate.search.engine.search.predicate.dsl.SimpleQueryFlag;
 import org.hibernate.search.mapper.orm.Search;
 import org.hibernate.search.mapper.orm.session.SearchSession;
 
@@ -15,32 +17,42 @@ public class YourIT extends SearchTestBase {
 
 	@Override
 	public Class<?>[] getAnnotatedClasses() {
-		return new Class<?>[]{ YourAnnotatedEntity.class };
+		return new Class<?>[]{ YourAnnotatedEntity.class, Product.class };
 	}
 
 	@Test
 	public void testYourBug() {
 		try ( Session s = getSessionFactory().openSession() ) {
-			YourAnnotatedEntity yourEntity1 = new YourAnnotatedEntity( 1L, "Jane Smith" );
-			YourAnnotatedEntity yourEntity2 = new YourAnnotatedEntity( 2L, "John Doe" );
+			Product product1 = new Product(1L, "description1");
+			Product product2 = new Product(2L, "description2");
+			Product product3 = new Product(3L, "description3");
+			Product product4 = new Product(4L, null);
+			Product product5 = new Product(5L, null);
 	
 			Transaction tx = s.beginTransaction();
-			s.persist( yourEntity1 );
-			s.persist( yourEntity2 );
+			s.persist(product1);
+			s.persist(product2);
+			s.persist(product3);
+			s.persist(product4);
+			s.persist(product5);
 			tx.commit();
 		}
 
 		try ( Session session = getSessionFactory().openSession() ) {
 			SearchSession searchSession = Search.session( session );
 
-			List<YourAnnotatedEntity> hits = searchSession.search( YourAnnotatedEntity.class )
-					.where( f -> f.match().field( "name" ).matching( "smith" ) )
-					.fetchHits( 20 );
+			String searchQuery = "*";
+			List<Product> products = searchSession
+					.search(Product.class)
+					.where(f -> f.simpleQueryString().fields("description_normalized.default")
+							.matching(searchQuery)
+							.analyzer("standard_analyzer")
+							.flags(SimpleQueryFlag.WHITESPACE)
+							.defaultOperator(BooleanOperator.AND)
+					).fetchAllHits();
 
-			assertThat( hits )
-					.hasSize( 1 )
-					.element( 0 ).extracting( YourAnnotatedEntity::getId )
-					.isEqualTo( 1L );
+			assertThat( products )
+					.hasSize(0); //return 5
 		}
 	}
 
